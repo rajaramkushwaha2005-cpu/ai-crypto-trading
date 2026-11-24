@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Crypto Analysis — BTCUSD</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --panel:#121d30; --muted:#9aa9bf; --line:#263650; --text:#edf3fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px system-ui,Segoe UI,Arial,sans-serif; }
+    .wrap { max-width:1100px; margin:auto; padding:26px 18px 44px; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:22px; }
+    h1 { font-size:clamp(23px,4vw,34px); margin:0 0 5px; }
+    .muted { color:var(--muted); }
+    .pill { border:1px solid var(--line); padding:7px 11px; border-radius:99px; color:#b9c8dc; font-size:13px; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:18px; min-width:0; }
+    .label { color:var(--muted); font-size:13px; margin-bottom:10px; }
+    .value { font-size:clamp(21px,3vw,29px); font-weight:700; overflow-wrap:anywhere; }
+    .signal { font-size:25px; font-weight:800; letter-spacing:1px; }
+    .BUY { color:#35d39a; } .SELL { color:#ff6b78; } .WAIT { color:#f4c56a; }
+    .chart-card { margin-top:15px; }
+    .chart-head { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+    canvas { width:100% !important; max-height:360px; }
+    .footer { margin-top:16px; font-size:12px; line-height:1.6; color:var(--muted); }
+    .error { color:#ff9aa3; white-space:pre-wrap; }
+    @media(max-width:760px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .wrap {padding:18px 12px 32px;} }
+    @media(max-width:380px) { .grid {grid-template-columns:1fr 1fr;} .card {padding:13px;} }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AI Crypto Analysis</h1>
+      <div class="muted">Delta Exchange India · BTCUSD · 4-hour strategy</div>
+    </div>
+    <div class="pill" id="status">Connecting to market data…</div>
+  </header>
+
+  <section class="grid">
+    <div class="card"><div class="label">Live BTCUSD Price</div><div class="value" id="price">—</div></div>
+    <div class="card"><div class="label">EMA 20</div><div class="value" id="ema20">—</div></div>
+    <div class="card"><div class="label">EMA 50</div><div class="value" id="ema50">—</div></div>
+    <div class="card"><div class="label">RSI (14)</div><div class="value" id="rsi">—</div></div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <div><strong>BTCUSD Price Chart</strong><div class="muted" style="font-size:12px">Recent 4-hour candle closes</div></div>
+      <div><span class="muted">Strategy signal: </span><span class="signal" id="signal">—</span></div>
+    </div>
+    <canvas id="priceChart"></canvas>
+    <div class="footer" id="updated">Waiting for first update…</div>
+    <div class="footer" id="note"></div>
+    <div class="footer error" id="error"></div>
+  </section>
+  <div class="footer">Educational analysis only, not financial advice. The signal is based on the EMA20/EMA50 and RSI rules from your Python script. No order is placed.</div>
+</div>
+
+<script>
+let chart;
+function fmt(n) {
+  return Number(n).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+async function refresh() {
+  const status = document.getElementById("status");
+  try {
+    const response = await fetch("/api/analysis", {cache:"no-store"});
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Market data request failed");
+    const d = result.data;
+    document.getElementById("price").textContent = "$" + fmt(d.live_price);
+    document.getElementById("ema20").textContent = fmt(d.ema20);
+    document.getElementById("ema50").textContent = fmt(d.ema50);
+    document.getElementById("rsi").textContent = d.rsi.toFixed(2);
+    const signal = document.getElementById("signal");
+    signal.textContent = d.signal;
+    signal.className = "signal " + d.signal;
+    document.getElementById("updated").textContent =
+      "Last updated: " + d.updated_at + " · Candle close: " + fmt(d.candle_close);
+    document.getElementById("note").textContent = d.note;
+    document.getElementById("error").textContent = "";
+    const labels = d.chart.map(x => x.time);
+    const values = d.chart.map(x => x.close);
+    if (!chart) {
+      chart = new Chart(document.getElementById("priceChart"), {
+        type:"line",
+        data:{labels, datasets:[{label:"BTCUSD close", data:values, borderWidth:2, pointRadius:0, tension:0.15}]},
+        options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:"#dce7f5"}}},
+          scales:{x:{ticks:{color:"#9aa9bf",maxTicksLimit:8},grid:{color:"#263650"}},
+                  y:{ticks:{color:"#9aa9bf"},grid:{color:"#263650"}}}}
+      });
+    } else { chart.data.labels = labels; chart.data.datasets[0].data = values; chart.update(); }
+    status.textContent = "Market data connected · refresh " + d.refresh_seconds + "s";
+  } catch (err) {
+    status.textContent = "Market data unavailable";
+    document.getElementById("error").textContent = "Error: " + err.message;
+  }
+}
+refresh();
+setInterval(refresh, {{ refresh_seconds }} * 1000);
+</script>
+</body>
+</html>
